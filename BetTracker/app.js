@@ -1,4 +1,4 @@
-const SPORTS = ["Football", "Basketball", "Baseball", "Hockey", "Soccer", "Tennis", "MMA", "Golf", "Boxing", "Esports"];
+const SPORTS = ["Football", "Basketball", "Baseball", "Hockey", "Soccer", "Tennis", "MMA", "Golf", "Boxing", "Esports", "Multi-sport"];
 const STORE_KEY = "edgeledger.bets.v1";
 const SETTINGS_KEY = "edgeledger.settings.v1";
 
@@ -34,7 +34,11 @@ function loadBets() {
     return [];
   }
 
-  return parsed;
+  const normalized = parsed.map((bet) => ({ ...bet, odds: normalizeStoredOdds(bet.odds), legDetails: bet.legDetails || "" }));
+  if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
+    localStorage.setItem(STORE_KEY, JSON.stringify(normalized));
+  }
+  return normalized;
 }
 
 function loadSettings() {
@@ -55,14 +59,22 @@ function profitForBet(bet) {
   if (bet.status === "Lost") return -Number(bet.stake);
   const odds = Number(bet.odds);
   const stake = Number(bet.stake);
-  return odds > 0 ? stake * (odds / 100) : stake * (100 / Math.abs(odds));
+  return stake * Math.max(0, odds - 1);
 }
 
 function potentialProfit(odds, stake) {
   odds = Number(odds);
   stake = Number(stake);
   if (!odds || !stake) return 0;
-  return odds > 0 ? stake * (odds / 100) : stake * (100 / Math.abs(odds));
+  return stake * Math.max(0, odds - 1);
+}
+
+function normalizeStoredOdds(odds) {
+  const value = Number(odds);
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return Number((1 + 100 / Math.abs(value)).toFixed(2));
+  if (value >= 100) return Number((1 + value / 100).toFixed(2));
+  return value;
 }
 
 function filteredBets() {
@@ -190,6 +202,7 @@ function saveBetFromForm(event) {
     propLine: el("propLineInput").value.trim(),
     parlay: el("parlayInput").checked || el("marketInput").value === "Parlay",
     legs: Number(el("legsInput").value) || 1,
+    legDetails: el("legDetailsInput").value.trim(),
     notes: el("notesInput").value.trim()
   };
 
@@ -208,7 +221,7 @@ function updateSettlementPreview() {
   const status = el("statusInput").value;
   const win = potentialProfit(odds, stake);
   const value = status === "Won" ? win : status === "Lost" ? -stake : 0;
-  el("settlementPreview").textContent = `Potential win: ${currency(win)}. Current settlement: ${currency(value)}.`;
+  el("settlementPreview").textContent = `Decimal odds ${formatOdds(odds)} return ${currency(stake + win)} total on a win. Profit: ${currency(value)}.`;
 }
 
 function render() {
@@ -295,7 +308,7 @@ function renderTable() {
     <tr>
       <td>${bet.date}</td>
       <td><strong>${bet.sport}</strong><br><small>${bet.league || bet.book || ""}</small></td>
-      <td><strong>${bet.pick}</strong><br><small>${bet.event} - ${bet.market}${bet.parlay ? ` - ${bet.legs} legs` : ""}</small></td>
+      <td><strong>${bet.pick}</strong><br><small>${bet.event} - ${bet.market}${bet.parlay ? ` - ${bet.legs} legs` : ""}${bet.legDetails ? ` - ${summarizeLegDetails(bet.legDetails)}` : ""}</small></td>
       <td>${formatOdds(bet.odds)}</td>
       <td>${currency(bet.stake)}</td>
       <td><span class="status-pill status-${bet.status}">${bet.status}</span></td>
@@ -335,6 +348,7 @@ function editBet(id) {
   el("propLineInput").value = bet.propLine;
   el("parlayInput").checked = bet.parlay;
   el("legsInput").value = bet.legs;
+  el("legDetailsInput").value = bet.legDetails || "";
   el("notesInput").value = bet.notes;
   el("formTitle").textContent = "Edit bet";
   updateSettlementPreview();
@@ -405,7 +419,7 @@ function renderPerformancePulse() {
     ["Biggest win", biggestWin ? `${biggestWin.pick} (${currency(profitForBet(biggestWin))})` : "None yet"],
     ["Biggest loss", biggestLoss ? `${biggestLoss.pick} (${currency(profitForBet(biggestLoss))})` : "None yet"],
     ["Average stake", currency(avgStake)],
-    ["Average odds", visible.length ? formatOdds(Math.round(avgOdds)) : "No bets"]
+    ["Average odds", visible.length ? formatOdds(avgOdds) : "No bets"]
   ];
 
   el("performancePulse").innerHTML = cards.map(([label, value]) => `
@@ -576,11 +590,18 @@ function groupProfit(list, key) {
 }
 
 function formatOdds(odds) {
-  return odds > 0 ? `+${odds}` : `${odds}`;
+  const value = Number(odds);
+  return Number.isFinite(value) && value > 0 ? value.toFixed(2) : "0.00";
+}
+
+function summarizeLegDetails(details) {
+  const lines = details.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return "leg details saved";
+  return lines.length === 1 ? lines[0] : `${lines.length} detailed legs`;
 }
 
 function exportCsv() {
-  const headers = ["date", "sport", "league", "market", "event", "pick", "odds", "stake", "status", "profit", "book", "player", "propLine", "parlay", "legs", "notes"];
+  const headers = ["date", "sport", "league", "market", "event", "pick", "odds", "stake", "status", "profit", "book", "player", "propLine", "parlay", "legs", "legDetails", "notes"];
   const lines = [headers.join(",")].concat(bets.map((bet) => headers.map((key) => {
     const value = key === "profit" ? profitForBet(bet) : bet[key];
     return `"${String(value ?? "").replaceAll('"', '""')}"`;
