@@ -31,6 +31,19 @@
           <h1>Betting command center</h1>
         </div>
         <div class="top-actions">
+          <div class="auth-panel" id="authPanel">
+            <div class="auth-status">
+              <strong id="authStatus">Local mode</strong>
+              <span id="syncStatus">Sign in to sync across devices</span>
+            </div>
+            <div class="auth-fields" id="authFields">
+              <input id="authEmailInput" type="email" placeholder="Email">
+              <input id="authPasswordInput" type="password" placeholder="Password">
+              <button class="ghost-button" id="signInBtn" type="button">Sign in</button>
+              <button class="primary-button" id="signUpBtn" type="button">Sign up</button>
+            </div>
+            <button class="ghost-button" id="signOutBtn" type="button">Sign out</button>
+          </div>
           <input id="importFileInput" type="file" accept="application/json" hidden>
           <button class="icon-button" id="importBtn" title="Import a JSON backup" aria-label="Import backup">
             <span>Import</span>
@@ -331,6 +344,8 @@
       </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -19,6 +19,10 @@ let settings = loadSettings();
 let filters = { sport: "all", status: "all", market: "all", search: "" };
 let calendarDate = new Date();
 let parlayLegs = [];
+let supabaseClient = null;
+let currentUser = null;
+let cloudSaveTimer = null;
+let cloudConfigured = false;
 
 const el = (id) => document.getElementById(id);
 const currency = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n || 0);
@@ -48,10 +52,12 @@ function loadSettings() {
 
 function saveBets() {
   localStorage.setItem(STORE_KEY, JSON.stringify(bets));
+  queueCloudSave();
 }
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  queueCloudSave();
 }
 
 function profitForBet(bet) {
@@ -121,9 +127,11 @@ function filteredBets() {
   });
 }
 
-function init() {
+async function init() {
   populateSports();
   bindEvents();
+  setupCloud();
+  await restoreSession();
   resetForm();
   render();
 }
@@ -198,6 +206,9 @@ function bindEvents() {
   el("backupBtn").addEventListener("click", exportBackup);
   el("importBtn").addEventListener("click", () => el("importFileInput").click());
   el("importFileInput").addEventListener("change", importBackup);
+  el("signInBtn").addEventListener("click", signIn);
+  el("signUpBtn").addEventListener("click", signUp);
+  el("signOutBtn").addEventListener("click", signOut);
   el("emptyAddBtn").addEventListener("click", () => {
     setView("tracker");
     el("eventInput").focus();
@@ -211,6 +222,152 @@ function bindEvents() {
     saveSettings();
     renderRiskPanel();
   });
+}
+
+function setupCloud() {
+  const config = window.EDGELEDGER_SUPABASE || {};
+  cloudConfigured = Boolean(config.url && config.anonKey && window.supabase);
+  if (!cloudConfigured) {
+    updateAuthUi("Local mode", "Add Supabase keys to enable sync");
+    return;
+  }
+
+  supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    if (currentUser) await loadCloudProfile();
+    updateAuthUi();
+    render();
+  });
+}
+
+async function restoreSession() {
+  if (!supabaseClient) {
+    updateAuthUi();
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    updateAuthUi("Sync unavailable", error.message);
+    return;
+  }
+
+  currentUser = data.session?.user || null;
+  if (currentUser) await loadCloudProfile();
+  updateAuthUi();
+}
+
+async function signUp() {
+  if (!ensureCloudConfigured()) return;
+  const credentials = getAuthCredentials();
+  if (!credentials) return;
+
+  updateAuthUi("Creating account", "Saving your tracker in the cloud");
+  const { error } = await supabaseClient.auth.signUp(credentials);
+  if (error) {
+    updateAuthUi("Sign up failed", error.message);
+    return;
+  }
+
+  updateAuthUi("Check your email", "Confirm your account, then sign in");
+}
+
+async function signIn() {
+  if (!ensureCloudConfigured()) return;
+  const credentials = getAuthCredentials();
+  if (!credentials) return;
+
+  updateAuthUi("Signing in", "Loading your synced tracker");
+  const { error } = await supabaseClient.auth.signInWithPassword(credentials);
+  if (error) {
+    updateAuthUi("Sign in failed", error.message);
+    return;
+  }
+}
+
+async function signOut() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  updateAuthUi();
+}
+
+function getAuthCredentials() {
+  const email = el("authEmailInput").value.trim();
+  const password = el("authPasswordInput").value;
+  if (!email || !password) {
+    updateAuthUi("Missing sign in", "Enter your email and password");
+    return null;
+  }
+  return { email, password };
+}
+
+function ensureCloudConfigured() {
+  if (cloudConfigured) return true;
+  updateAuthUi("Cloud not configured", "Add your Supabase URL and anon key");
+  return false;
+}
+
+async function loadCloudProfile() {
+  if (!supabaseClient || !currentUser) return;
+  updateAuthUi("Syncing", "Loading cloud data");
+
+  const { data, error } = await supabaseClient
+    .from("bet_tracker_profiles")
+    .select("bets, settings")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    updateAuthUi("Sync error", error.message);
+    return;
+  }
+
+  if (data) {
+    bets = Array.isArray(data.bets) ? data.bets.map((bet) => normalizeBet(bet)) : [];
+    settings = { ...settings, ...(data.settings || {}) };
+    localStorage.setItem(STORE_KEY, JSON.stringify(bets));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    updateAuthUi();
+    return;
+  }
+
+  await saveCloudProfile();
+  updateAuthUi("Synced", "Local tracker copied to your account");
+}
+
+function queueCloudSave() {
+  if (!supabaseClient || !currentUser) return;
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(saveCloudProfile, 500);
+}
+
+async function saveCloudProfile() {
+  if (!supabaseClient || !currentUser) return;
+  updateAuthUi("Syncing", "Saving changes");
+
+  const { error } = await supabaseClient
+    .from("bet_tracker_profiles")
+    .upsert({
+      user_id: currentUser.id,
+      bets,
+      settings
+    }, { onConflict: "user_id" });
+
+  if (error) {
+    updateAuthUi("Sync error", error.message);
+    return;
+  }
+
+  updateAuthUi("Synced", "Saved across your devices");
+}
+
+function updateAuthUi(status, detail) {
+  const isSignedIn = Boolean(currentUser);
+  el("authPanel").classList.toggle("signed-in", isSignedIn);
+  el("authStatus").textContent = status || (isSignedIn ? currentUser.email : cloudConfigured ? "Signed out" : "Local mode");
+  el("syncStatus").textContent = detail || (isSignedIn ? "Cloud sync is on" : cloudConfigured ? "Sign in to sync across devices" : "Add Supabase keys to enable sync");
 }
 
 function setView(section) {
