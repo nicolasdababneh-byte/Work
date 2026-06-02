@@ -218,10 +218,21 @@
                 Parlay legs
                 <input id="legsInput" type="number" min="1" step="1" value="1">
               </label>
-              <label class="wide">
-                Parlay leg details
-                <textarea id="legDetailsInput" rows="4" placeholder="Leg 1: Soccer - Arsenal ML @ 1.80&#10;Leg 2: NBA - Celtics -4.5 @ 1.91&#10;Leg 3: NHL - Oilers over 5.5 @ 1.87"></textarea>
-              </label>
+              <input id="legDetailsInput" type="hidden">
+              <section class="wide parlay-builder" id="parlayBuilder">
+                <div class="parlay-builder-head">
+                  <div>
+                    <span>Parlay builder</span>
+                    <strong id="parlayCombinedOdds">Combined odds 0.00</strong>
+                  </div>
+                  <button type="button" class="ghost-button" id="addLegBtn">Add leg</button>
+                </div>
+                <div id="parlayLegsList" class="parlay-legs-list"></div>
+                <div class="parlay-summary">
+                  <span id="parlayLegCount">0 legs</span>
+                  <span id="parlayReturnPreview">$0.00 total return</span>
+                </div>
+              </section>
               <label class="wide">
                 Notes
                 <textarea id="notesInput" rows="3" placeholder="Why you placed it, closing line, injury angle"></textarea>

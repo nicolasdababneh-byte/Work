@@ -18,6 +18,7 @@ let bets = loadBets();
 let settings = loadSettings();
 let filters = { sport: "all", status: "all", market: "all", search: "" };
 let calendarDate = new Date();
+let parlayLegs = [];
 
 const el = (id) => document.getElementById(id);
 const currency = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n || 0);
@@ -34,7 +35,7 @@ function loadBets() {
     return [];
   }
 
-  const normalized = parsed.map((bet) => ({ ...bet, odds: normalizeStoredOdds(bet.odds), legDetails: bet.legDetails || "" }));
+  const normalized = parsed.map((bet) => normalizeBet(bet));
   if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
     localStorage.setItem(STORE_KEY, JSON.stringify(normalized));
   }
@@ -75,6 +76,38 @@ function normalizeStoredOdds(odds) {
   if (value < 0) return Number((1 + 100 / Math.abs(value)).toFixed(2));
   if (value >= 100) return Number((1 + value / 100).toFixed(2));
   return value;
+}
+
+function normalizeBet(bet) {
+  const normalizedLegs = Array.isArray(bet.parlayLegs)
+    ? bet.parlayLegs.map((leg) => normalizeParlayLeg(leg))
+    : parseLegDetails(bet.legDetails || "");
+
+  return {
+    ...bet,
+    odds: normalizeStoredOdds(bet.odds),
+    legDetails: bet.legDetails || formatLegDetails(normalizedLegs),
+    parlayLegs: normalizedLegs
+  };
+}
+
+function normalizeParlayLeg(leg = {}) {
+  return {
+    id: leg.id || uid(),
+    sport: leg.sport || "Football",
+    market: leg.market || "Moneyline",
+    pick: leg.pick || "",
+    odds: normalizeStoredOdds(leg.odds || 1)
+  };
+}
+
+function parseLegDetails(details) {
+  return details.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, index) => {
+    const oddsMatch = line.match(/@?\s*(\d+(?:\.\d+)?)\s*$/);
+    const odds = oddsMatch ? Number(oddsMatch[1]) : 1;
+    const pick = oddsMatch ? line.slice(0, oddsMatch.index).replace(/^Leg\s+\d+:\s*/i, "").trim() : line.replace(/^Leg\s+\d+:\s*/i, "").trim();
+    return normalizeParlayLeg({ id: uid(), sport: "Multi-sport", market: "Parlay", pick: pick || `Leg ${index + 1}`, odds });
+  });
 }
 
 function filteredBets() {
@@ -146,7 +179,19 @@ function bindEvents() {
   });
   el("resetFormBtn").addEventListener("click", resetForm);
   el("betForm").addEventListener("submit", saveBetFromForm);
-  ["oddsInput", "stakeInput", "statusInput"].forEach((id) => el(id).addEventListener("input", updateSettlementPreview));
+  ["oddsInput", "stakeInput", "statusInput", "marketInput"].forEach((id) => el(id).addEventListener("input", () => {
+    syncParlayMode();
+    updateSettlementPreview();
+  }));
+  el("parlayInput").addEventListener("change", () => {
+    syncParlayMode();
+    updateSettlementPreview();
+  });
+  el("legsInput").addEventListener("input", syncLegCountFromInput);
+  el("addLegBtn").addEventListener("click", () => addParlayLeg());
+  el("parlayLegsList").addEventListener("input", updateParlayLegFromInput);
+  el("parlayLegsList").addEventListener("change", updateParlayLegFromInput);
+  el("parlayLegsList").addEventListener("click", handleParlayLegClick);
   el("prevMonthBtn").addEventListener("click", () => changeMonth(-1));
   el("nextMonthBtn").addEventListener("click", () => changeMonth(1));
   el("exportBtn").addEventListener("click", exportCsv);
@@ -180,12 +225,22 @@ function resetForm() {
   el("sportInput").value = "Football";
   el("stakeInput").value = settings.defaultStake;
   el("legsInput").value = 1;
+  parlayLegs = [];
+  renderParlayLegs();
+  syncParlayMode();
   el("formTitle").textContent = "Add bet";
   updateSettlementPreview();
 }
 
 function saveBetFromForm(event) {
   event.preventDefault();
+  const isParlay = el("parlayInput").checked || el("marketInput").value === "Parlay";
+  const savedLegs = isParlay ? parlayLegs.map((leg) => normalizeParlayLeg(leg)).filter(isCompleteParlayLeg) : [];
+  if (isParlay && savedLegs.length < 2) {
+    alert("Add at least two completed parlay legs with a pick and decimal odds.");
+    return;
+  }
+  const odds = isParlay && savedLegs.length ? calculateParlayOdds(savedLegs) : Number(el("oddsInput").value);
   const bet = {
     id: el("betId").value || uid(),
     date: el("dateInput").value,
@@ -194,15 +249,16 @@ function saveBetFromForm(event) {
     market: el("marketInput").value,
     event: el("eventInput").value.trim(),
     pick: el("pickInput").value.trim(),
-    odds: Number(el("oddsInput").value),
+    odds,
     stake: Number(el("stakeInput").value),
     status: el("statusInput").value,
     book: el("bookInput").value.trim(),
     player: el("playerInput").value.trim(),
     propLine: el("propLineInput").value.trim(),
-    parlay: el("parlayInput").checked || el("marketInput").value === "Parlay",
-    legs: Number(el("legsInput").value) || 1,
-    legDetails: el("legDetailsInput").value.trim(),
+    parlay: isParlay,
+    legs: isParlay ? Math.max(1, savedLegs.length) : 1,
+    legDetails: formatLegDetails(savedLegs),
+    parlayLegs: savedLegs,
     notes: el("notesInput").value.trim()
   };
 
@@ -216,12 +272,133 @@ function saveBetFromForm(event) {
 }
 
 function updateSettlementPreview() {
-  const odds = Number(el("oddsInput").value);
+  const isParlay = el("parlayInput").checked || el("marketInput").value === "Parlay";
+  const odds = isParlay && parlayLegs.length ? calculateParlayOdds(parlayLegs) : Number(el("oddsInput").value);
   const stake = Number(el("stakeInput").value);
   const status = el("statusInput").value;
   const win = potentialProfit(odds, stake);
   const value = status === "Won" ? win : status === "Lost" ? -stake : 0;
+  if (isParlay) {
+    renderParlaySummary();
+    el("oddsInput").value = odds ? formatOdds(odds) : "";
+  }
   el("settlementPreview").textContent = `Decimal odds ${formatOdds(odds)} return ${currency(stake + win)} total on a win. Profit: ${currency(value)}.`;
+}
+
+function syncParlayMode() {
+  const isParlay = el("parlayInput").checked || el("marketInput").value === "Parlay";
+  el("parlayInput").checked = isParlay;
+  if (isParlay) {
+    el("marketInput").value = "Parlay";
+    el("sportInput").value = "Multi-sport";
+    if (!parlayLegs.length) {
+      parlayLegs = [createParlayLeg(), createParlayLeg()];
+    }
+  }
+  el("oddsInput").readOnly = isParlay;
+  el("parlayBuilder").classList.toggle("active", isParlay);
+  renderParlayLegs();
+}
+
+function createParlayLeg(overrides = {}) {
+  return normalizeParlayLeg({ id: uid(), sport: "Football", market: "Moneyline", pick: "", odds: 1.91, ...overrides });
+}
+
+function addParlayLeg(overrides = {}) {
+  parlayLegs.push(createParlayLeg(overrides));
+  renderParlayLegs();
+  updateSettlementPreview();
+}
+
+function syncLegCountFromInput() {
+  const desired = Math.max(1, Number(el("legsInput").value) || 1);
+  while (parlayLegs.length < desired) parlayLegs.push(createParlayLeg());
+  while (parlayLegs.length > desired) parlayLegs.pop();
+  renderParlayLegs();
+  updateSettlementPreview();
+}
+
+function updateParlayLegFromInput(event) {
+  const field = event.target.dataset.field;
+  const id = event.target.dataset.id;
+  if (!field || !id) return;
+  const leg = parlayLegs.find((item) => item.id === id);
+  if (!leg) return;
+  leg[field] = field === "odds" ? Number(event.target.value) : event.target.value;
+  renderParlaySummary();
+  updateSettlementPreview();
+}
+
+function handleParlayLegClick(event) {
+  const action = event.target.dataset.action;
+  const id = event.target.dataset.id;
+  if (action !== "remove-leg" || !id) return;
+  parlayLegs = parlayLegs.filter((leg) => leg.id !== id);
+  if (!parlayLegs.length) parlayLegs.push(createParlayLeg());
+  renderParlayLegs();
+  updateSettlementPreview();
+}
+
+function renderParlayLegs() {
+  const list = el("parlayLegsList");
+  if (!list) return;
+  list.innerHTML = parlayLegs.map((leg, index) => `
+    <article class="parlay-leg">
+      <div class="parlay-leg-top">
+        <strong>Leg ${index + 1}</strong>
+        <div class="parlay-leg-actions">
+          <span class="leg-odds-preview">@ ${formatOdds(leg.odds)}</span>
+          <button class="mini-button danger-button" type="button" data-action="remove-leg" data-id="${leg.id}">Remove</button>
+        </div>
+      </div>
+      <div class="parlay-leg-grid">
+        <label>
+          Sport
+          <select data-field="sport" data-id="${leg.id}">${SPORTS.map((sport) => `<option value="${sport}" ${sport === leg.sport ? "selected" : ""}>${sport}</option>`).join("")}</select>
+        </label>
+        <label>
+          Market
+          <select data-field="market" data-id="${leg.id}">
+            ${["Spread", "Moneyline", "Total", "Player Prop", "Game Prop", "Future"].map((market) => `<option value="${market}" ${market === leg.market ? "selected" : ""}>${market}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Pick
+          <input data-field="pick" data-id="${leg.id}" value="${escapeHtml(leg.pick)}" placeholder="Team, total, or prop">
+        </label>
+        <label>
+          Decimal odds
+          <input data-field="odds" data-id="${leg.id}" type="number" min="1.01" step="0.01" value="${formatOdds(leg.odds)}">
+        </label>
+      </div>
+    </article>
+  `).join("");
+  renderParlaySummary();
+}
+
+function renderParlaySummary() {
+  const combinedOdds = calculateParlayOdds(parlayLegs);
+  const stake = Number(el("stakeInput").value);
+  const totalReturn = stake * combinedOdds;
+  el("legsInput").value = parlayLegs.length || 1;
+  el("legDetailsInput").value = formatLegDetails(parlayLegs);
+  el("parlayCombinedOdds").textContent = `Combined odds ${formatOdds(combinedOdds)}`;
+  el("parlayLegCount").textContent = `${parlayLegs.length} ${parlayLegs.length === 1 ? "leg" : "legs"}`;
+  el("parlayReturnPreview").textContent = `${currency(totalReturn)} total return`;
+}
+
+function calculateParlayOdds(legs) {
+  const validLegs = legs.filter((leg) => Number(leg.odds) > 1);
+  if (!validLegs.length) return 0;
+  return Number(validLegs.reduce((product, leg) => product * Number(leg.odds), 1).toFixed(2));
+}
+
+function isCompleteParlayLeg(leg) {
+  return Boolean(leg.pick.trim()) && Number(leg.odds) > 1;
+}
+
+function formatLegDetails(legs) {
+  return legs.map((leg, index) => `Leg ${index + 1}: ${leg.sport} - ${leg.market} - ${leg.pick || "Untitled pick"} @ ${formatOdds(leg.odds)}`).join("\n");
 }
 
 function render() {
@@ -349,6 +526,8 @@ function editBet(id) {
   el("parlayInput").checked = bet.parlay;
   el("legsInput").value = bet.legs;
   el("legDetailsInput").value = bet.legDetails || "";
+  parlayLegs = bet.parlay ? (bet.parlayLegs || parseLegDetails(bet.legDetails || "")) : [];
+  syncParlayMode();
   el("notesInput").value = bet.notes;
   el("formTitle").textContent = "Edit bet";
   updateSettlementPreview();
@@ -637,7 +816,7 @@ function importBackup(event) {
       const importedBets = Array.isArray(payload) ? payload : payload.bets;
       if (!Array.isArray(importedBets)) throw new Error("Backup does not contain bets.");
 
-      bets = importedBets.map((bet) => ({ ...bet, id: bet.id || uid() }));
+      bets = importedBets.map((bet) => normalizeBet({ ...bet, id: bet.id || uid() }));
       if (payload.settings) settings = { ...settings, ...payload.settings };
       saveBets();
       saveSettings();
@@ -658,6 +837,14 @@ function downloadFile(filename, content, type) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 window.addEventListener("resize", render);
