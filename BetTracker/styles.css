@@ -161,6 +161,8 @@ h2 {
 
 .top-actions {
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .primary-button,
@@ -232,6 +234,32 @@ textarea:focus {
 
 .view.active {
   display: block;
+}
+
+.empty-state {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid #b7d8ff;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ffffff 0%, #edf7ff 100%);
+}
+
+.empty-state.active {
+  display: flex;
+}
+
+.empty-state h2 {
+  margin-bottom: 6px;
+  font-size: 22px;
+}
+
+.empty-state p:last-child {
+  max-width: 680px;
+  color: var(--muted);
 }
 
 .metric-grid,
@@ -494,6 +522,37 @@ th {
   gap: 12px;
 }
 
+.pulse-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.pulse-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.pulse-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pulse-card strong {
+  text-align: right;
+}
+
+.empty-row {
+  padding: 28px 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (max-width: 1100px) {
   .metric-grid,
   .dashboard-layout,
@@ -526,10 +585,27 @@ th {
     flex-direction: column;
   }
 
+  .top-actions {
+    justify-content: stretch;
+  }
+
+  .top-actions button {
+    flex: 1 1 130px;
+  }
+
+  .empty-state {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .metric-grid,
   .insights-grid,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  table {
+    min-width: 720px;
   }
 
   .calendar-grid {

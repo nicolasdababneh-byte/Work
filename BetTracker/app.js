@@ -138,6 +138,13 @@ function bindEvents() {
   el("prevMonthBtn").addEventListener("click", () => changeMonth(-1));
   el("nextMonthBtn").addEventListener("click", () => changeMonth(1));
   el("exportBtn").addEventListener("click", exportCsv);
+  el("backupBtn").addEventListener("click", exportBackup);
+  el("importBtn").addEventListener("click", () => el("importFileInput").click());
+  el("importFileInput").addEventListener("change", importBackup);
+  el("emptyAddBtn").addEventListener("click", () => {
+    setView("tracker");
+    el("eventInput").focus();
+  });
   el("saveSettingsBtn").addEventListener("click", () => {
     settings = {
       defaultStake: Number(el("defaultStakeInput").value) || 0,
@@ -206,6 +213,7 @@ function updateSettlementPreview() {
 
 function render() {
   renderQuickSports();
+  renderEmptyState();
   renderDashboard();
   renderTable();
   renderCalendar();
@@ -216,6 +224,10 @@ function renderQuickSports() {
   document.querySelectorAll(".sport-chip").forEach((chip) => {
     chip.classList.toggle("active", chip.dataset.sport === filters.sport);
   });
+}
+
+function renderEmptyState() {
+  el("emptyState").classList.toggle("active", bets.length === 0);
 }
 
 function renderDashboard() {
@@ -274,6 +286,11 @@ function renderRecentBets(list) {
 function renderTable() {
   const visible = filteredBets().sort((a, b) => b.date.localeCompare(a.date));
   el("ledgerCount").textContent = `${visible.length} entries`;
+  if (!visible.length) {
+    el("betsTable").innerHTML = `<tr><td class="empty-row" colspan="8">No bets match this view yet.</td></tr>`;
+    return;
+  }
+
   el("betsTable").innerHTML = visible.map((bet) => `
     <tr>
       <td>${bet.date}</td>
@@ -368,7 +385,35 @@ function renderInsights() {
   el("bankrollInput").value = settings.bankroll;
   drawSportsChart(filteredBets());
   drawResultChart(filteredBets());
+  renderPerformancePulse();
   renderRiskPanel();
+}
+
+function renderPerformancePulse() {
+  const visible = filteredBets();
+  const settled = visible.filter((bet) => bet.status !== "Pending");
+  const markets = groupProfit(settled, "market");
+  const books = groupProfit(settled, "book").filter((row) => row.key !== "Other");
+  const biggestWin = settled.reduce((best, bet) => !best || profitForBet(bet) > profitForBet(best) ? bet : best, null);
+  const biggestLoss = settled.reduce((worst, bet) => !worst || profitForBet(bet) < profitForBet(worst) ? bet : worst, null);
+  const avgStake = visible.length ? visible.reduce((sum, bet) => sum + Number(bet.stake), 0) / visible.length : 0;
+  const avgOdds = visible.length ? visible.reduce((sum, bet) => sum + Number(bet.odds), 0) / visible.length : 0;
+
+  const cards = [
+    ["Best market", markets[0] ? `${markets[0].key} (${currency(markets[0].profit)})` : "No settled bets"],
+    ["Best book", books[0] ? `${books[0].key} (${currency(books[0].profit)})` : "No book data"],
+    ["Biggest win", biggestWin ? `${biggestWin.pick} (${currency(profitForBet(biggestWin))})` : "None yet"],
+    ["Biggest loss", biggestLoss ? `${biggestLoss.pick} (${currency(profitForBet(biggestLoss))})` : "None yet"],
+    ["Average stake", currency(avgStake)],
+    ["Average odds", visible.length ? formatOdds(Math.round(avgOdds)) : "No bets"]
+  ];
+
+  el("performancePulse").innerHTML = cards.map(([label, value]) => `
+    <div class="pulse-card">
+      <span>${label}</span>
+      <strong>${value}</strong>
+    </div>
+  `).join("");
 }
 
 function renderRiskPanel() {
@@ -545,6 +590,51 @@ function exportCsv() {
   const link = document.createElement("a");
   link.href = url;
   link.download = "edgeledger-bets.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportBackup() {
+  const payload = {
+    app: "EdgeLedger",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    bets,
+    settings
+  };
+  downloadFile("edgeledger-backup.json", JSON.stringify(payload, null, 2), "application/json");
+}
+
+function importBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      const importedBets = Array.isArray(payload) ? payload : payload.bets;
+      if (!Array.isArray(importedBets)) throw new Error("Backup does not contain bets.");
+
+      bets = importedBets.map((bet) => ({ ...bet, id: bet.id || uid() }));
+      if (payload.settings) settings = { ...settings, ...payload.settings };
+      saveBets();
+      saveSettings();
+      render();
+      event.target.value = "";
+    } catch (error) {
+      alert(`Could not import backup: ${error.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function downloadFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }

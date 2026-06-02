@@ -31,6 +31,13 @@
           <h1>Betting command center</h1>
         </div>
         <div class="top-actions">
+          <input id="importFileInput" type="file" accept="application/json" hidden>
+          <button class="icon-button" id="importBtn" title="Import a JSON backup" aria-label="Import backup">
+            <span>Import</span>
+          </button>
+          <button class="icon-button" id="backupBtn" title="Export a JSON backup" aria-label="Export backup">
+            <span>Backup</span>
+          </button>
           <button class="icon-button" id="exportBtn" title="Export bets as CSV" aria-label="Export bets">
             <span>CSV</span>
           </button>
@@ -75,6 +82,15 @@
       </section>
 
       <section id="dashboard" class="view active">
+        <section class="empty-state" id="emptyState">
+          <div>
+            <p class="eyebrow">Fresh tracker</p>
+            <h2>Start with your next bet</h2>
+            <p>Add one ticket and the dashboard, calendar, charts, ROI, and win rate will build around your real results.</p>
+          </div>
+          <button class="primary-button" id="emptyAddBtn">Add first bet</button>
+        </section>
+
         <div class="metric-grid">
           <article class="metric profit">
             <span>Total profit</span>
@@ -259,6 +275,13 @@
               <span>Net profit</span>
             </div>
             <canvas id="sportsChart" height="300"></canvas>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Performance pulse</h2>
+              <span>Current profile</span>
+            </div>
+            <div id="performancePulse" class="pulse-grid"></div>
           </section>
           <section class="panel chart-panel">
             <div class="panel-heading">
