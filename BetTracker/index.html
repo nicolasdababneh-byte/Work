@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EdgeLedger Bet Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">EL</div>
+        <div>
+          <strong>EdgeLedger</strong>
+          <span>Personal bet tracker</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#dashboard" class="active" data-section="dashboard">Dashboard</a>
+        <a href="#tracker" data-section="tracker">Tracker</a>
+        <a href="#calendar" data-section="calendar">Calendar</a>
+        <a href="#insights" data-section="insights">Charts</a>
+      </nav>
+      <div class="quick-sports" id="sportQuickFilters"></div>
+    </aside>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Profit and loss</p>
+          <h1>Betting command center</h1>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" id="exportBtn" title="Export bets as CSV" aria-label="Export bets">
+            <span>CSV</span>
+          </button>
+          <button class="primary-button" id="newBetBtn">Add bet</button>
+        </div>
+      </header>
+
+      <section class="filters" aria-label="Bet filters">
+        <label>
+          Sport
+          <select id="sportFilter">
+            <option value="all">All sports</option>
+          </select>
+        </label>
+        <label>
+          Status
+          <select id="statusFilter">
+            <option value="all">All statuses</option>
+            <option value="Won">Won</option>
+            <option value="Lost">Lost</option>
+            <option value="Push">Push</option>
+            <option value="Pending">Pending</option>
+          </select>
+        </label>
+        <label>
+          Market
+          <select id="marketFilter">
+            <option value="all">All markets</option>
+            <option value="Spread">Spread</option>
+            <option value="Moneyline">Moneyline</option>
+            <option value="Total">Total</option>
+            <option value="Player Prop">Player Prop</option>
+            <option value="Game Prop">Game Prop</option>
+            <option value="Parlay">Parlay</option>
+            <option value="Future">Future</option>
+          </select>
+        </label>
+        <label>
+          Search
+          <input id="searchFilter" type="search" placeholder="Team, player, pick">
+        </label>
+      </section>
+
+      <section id="dashboard" class="view active">
+        <div class="metric-grid">
+          <article class="metric profit">
+            <span>Total profit</span>
+            <strong id="totalProfit">$0.00</strong>
+            <small id="roiLabel">ROI 0%</small>
+          </article>
+          <article class="metric">
+            <span>Win rate</span>
+            <strong id="winRate">0%</strong>
+            <small id="recordLabel">0-0-0</small>
+          </article>
+          <article class="metric">
+            <span>Total staked</span>
+            <strong id="totalStake">$0.00</strong>
+            <small id="betsCount">0 bets tracked</small>
+          </article>
+          <article class="metric">
+            <span>Pending exposure</span>
+            <strong id="pendingStake">$0.00</strong>
+            <small id="pendingCount">0 pending</small>
+          </article>
+        </div>
+
+        <section class="dashboard-layout">
+          <div class="panel chart-panel">
+            <div class="panel-heading">
+              <h2>Profit trend</h2>
+              <span id="trendRange">All time</span>
+            </div>
+            <canvas id="profitChart" height="260"></canvas>
+          </div>
+          <div class="panel">
+            <div class="panel-heading">
+              <h2>Best sports</h2>
+              <span>By net profit</span>
+            </div>
+            <div id="sportBreakdown" class="sport-breakdown"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Recent results</h2>
+            <span id="recentCount">Latest settled bets</span>
+          </div>
+          <div id="recentBets" class="recent-list"></div>
+        </section>
+      </section>
+
+      <section id="tracker" class="view">
+        <div class="tracker-layout">
+          <form id="betForm" class="panel bet-form">
+            <div class="panel-heading">
+              <h2 id="formTitle">Add bet</h2>
+              <button type="button" class="ghost-button" id="resetFormBtn">Clear</button>
+            </div>
+            <input type="hidden" id="betId">
+            <div class="form-grid">
+              <label>
+                Date
+                <input id="dateInput" type="date" required>
+              </label>
+              <label>
+                Sport
+                <select id="sportInput" required></select>
+              </label>
+              <label>
+                League
+                <input id="leagueInput" placeholder="NFL, NBA, UFC">
+              </label>
+              <label>
+                Market
+                <select id="marketInput" required>
+                  <option>Spread</option>
+                  <option>Moneyline</option>
+                  <option>Total</option>
+                  <option>Player Prop</option>
+                  <option>Game Prop</option>
+                  <option>Parlay</option>
+                  <option>Future</option>
+                </select>
+              </label>
+              <label class="wide">
+                Event
+                <input id="eventInput" placeholder="Lakers at Knicks" required>
+              </label>
+              <label class="wide">
+                Pick
+                <input id="pickInput" placeholder="Knicks -3.5, Mahomes over 1.5 TDs" required>
+              </label>
+              <label>
+                Odds
+                <input id="oddsInput" type="number" step="1" placeholder="-110" required>
+              </label>
+              <label>
+                Stake
+                <input id="stakeInput" type="number" min="0" step="0.01" placeholder="50" required>
+              </label>
+              <label>
+                Status
+                <select id="statusInput">
+                  <option>Pending</option>
+                  <option>Won</option>
+                  <option>Lost</option>
+                  <option>Push</option>
+                </select>
+              </label>
+              <label>
+                Sportsbook
+                <input id="bookInput" placeholder="DraftKings">
+              </label>
+              <label>
+                Prop player
+                <input id="playerInput" placeholder="Optional">
+              </label>
+              <label>
+                Prop line
+                <input id="propLineInput" placeholder="24.5 points">
+              </label>
+              <label class="toggle-row">
+                <input id="parlayInput" type="checkbox">
+                Parlay bet
+              </label>
+              <label>
+                Parlay legs
+                <input id="legsInput" type="number" min="1" step="1" value="1">
+              </label>
+              <label class="wide">
+                Notes
+                <textarea id="notesInput" rows="3" placeholder="Why you placed it, closing line, injury angle"></textarea>
+              </label>
+            </div>
+            <div class="settlement-preview" id="settlementPreview"></div>
+            <button class="primary-button full" type="submit">Save bet</button>
+          </form>
+
+          <section class="panel ledger-panel">
+            <div class="panel-heading">
+              <h2>Bet ledger</h2>
+              <span id="ledgerCount">0 entries</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Sport</th>
+                    <th>Bet</th>
+                    <th>Odds</th>
+                    <th>Stake</th>
+                    <th>Result</th>
+                    <th>P/L</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="betsTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="calendar" class="view">
+        <section class="panel">
+          <div class="panel-heading">
+            <button class="ghost-button" id="prevMonthBtn">Prev</button>
+            <h2 id="calendarTitle">Month</h2>
+            <button class="ghost-button" id="nextMonthBtn">Next</button>
+          </div>
+          <div class="calendar-grid calendar-weekdays">
+            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+          </div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </section>
+      </section>
+
+      <section id="insights" class="view">
+        <div class="insights-grid">
+          <section class="panel chart-panel">
+            <div class="panel-heading">
+              <h2>Sports performance</h2>
+              <span>Net profit</span>
+            </div>
+            <canvas id="sportsChart" height="300"></canvas>
+          </section>
+          <section class="panel chart-panel">
+            <div class="panel-heading">
+              <h2>Result mix</h2>
+              <span>Settled only</span>
+            </div>
+            <canvas id="resultChart" height="300"></canvas>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Parlay settings</h2>
+              <span>Risk view</span>
+            </div>
+            <div class="settings-grid">
+              <label>
+                Default stake
+                <input id="defaultStakeInput" type="number" min="0" step="5">
+              </label>
+              <label>
+                Max parlay legs
+                <input id="maxLegsInput" type="number" min="1" max="12" step="1">
+              </label>
+              <label>
+                Monthly bankroll
+                <input id="bankrollInput" type="number" min="0" step="50">
+              </label>
+              <button id="saveSettingsBtn" class="primary-button full">Save settings</button>
+            </div>
+            <div id="riskPanel" class="risk-panel"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
